@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { type FoodItem, getExpiryStatus, getDaysRemaining } from '@/types';
 
 interface FoodItemCardProps {
@@ -8,6 +9,7 @@ interface FoodItemCardProps {
 }
 
 export function FoodItemCard({ item, onDelete }: FoodItemCardProps) {
+    const [isCompleting, setIsCompleting] = useState(false);
     const status = getExpiryStatus(item.expiryDate);
     const daysRemaining = getDaysRemaining(item.expiryDate);
 
@@ -50,47 +52,64 @@ export function FoodItemCard({ item, onDelete }: FoodItemCardProps) {
         day: 'numeric',
     });
 
+    const handleComplete = () => {
+        setIsCompleting(true);
+        // Wait for animation, then delete
+        setTimeout(() => {
+            onDelete(item.id);
+        }, 400);
+    };
+
     return (
         <div
             className={`
-        relative group rounded-2xl border-2 p-4 
-        ${config.bg} ${config.border} ${config.glow}
-        shadow-lg hover:shadow-xl transition-all duration-300
-        hover:scale-[1.02] backdrop-blur-sm
-      `}
+                relative group rounded-2xl border-2 p-4 flex items-start gap-3
+                ${config.bg} ${config.border} ${config.glow}
+                shadow-lg transition-all duration-300
+                ${isCompleting ? 'opacity-0 scale-95 -translate-x-4' : 'hover:shadow-xl hover:scale-[1.02]'}
+                backdrop-blur-sm
+            `}
         >
-            {/* Delete button */}
+            {/* Checkbox */}
             <button
-                onClick={() => onDelete(item.id)}
-                className="
-          absolute top-3 right-3 w-8 h-8 rounded-full
-          bg-white/10 hover:bg-red-500 
-          flex items-center justify-center
-          text-gray-400 hover:text-white
-          transition-all duration-200
-          opacity-0 group-hover:opacity-100
-        "
-                aria-label="Delete item"
+                onClick={handleComplete}
+                disabled={isCompleting}
+                className={`
+                    flex-shrink-0 w-6 h-6 mt-0.5 rounded-md border-2
+                    flex items-center justify-center
+                    transition-all duration-200
+                    ${isCompleting
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : 'border-gray-400 hover:border-emerald-400 hover:bg-emerald-500/20'
+                    }
+                `}
+                aria-label="Mark as used/complete"
             >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                {isCompleting && (
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                )}
             </button>
 
-            {/* Food name */}
-            <h3 className="text-lg font-semibold text-white mb-2 pr-8">
-                {item.name}
-            </h3>
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                {/* Food name */}
+                <h3 className={`text-lg font-semibold text-white mb-2 ${isCompleting ? 'line-through opacity-50' : ''}`}>
+                    {item.name}
+                </h3>
 
-            {/* Expiry info */}
-            <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-300">
-                    {formattedDate}
-                </span>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${config.badge}`}>
-                    {config.text}
-                </span>
+                {/* Expiry info */}
+                <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-300">
+                        {formattedDate}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${config.badge}`}>
+                        {config.text}
+                    </span>
+                </div>
             </div>
         </div>
     );
 }
+
