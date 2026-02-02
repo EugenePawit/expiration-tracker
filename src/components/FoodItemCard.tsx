@@ -70,17 +70,17 @@ export function FoodItemCard({ item, onDelete }: FoodItemCardProps) {
                 backdrop-blur-sm
             `}
         >
-            {/* Checkbox */}
+            {/* Checkbox - Apple Reminders style */}
             <button
                 onClick={handleComplete}
                 disabled={isCompleting}
                 className={`
-                    flex-shrink-0 w-6 h-6 mt-0.5 rounded-md border-2
+                    flex-shrink-0 w-7 h-7 mt-1 rounded-full border-[2.5px]
                     flex items-center justify-center
                     transition-all duration-200
                     ${isCompleting
-                        ? 'bg-emerald-500 border-emerald-500'
-                        : 'border-gray-400 hover:border-emerald-400 hover:bg-emerald-500/20'
+                        ? 'bg-emerald-500 border-emerald-500 scale-110'
+                        : `${config.border} hover:bg-white/20 active:scale-95`
                     }
                 `}
                 aria-label="Mark as used/complete"
