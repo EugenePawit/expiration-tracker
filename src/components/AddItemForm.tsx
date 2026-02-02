@@ -21,6 +21,57 @@ export function AddItemForm({ onAdd }: AddItemFormProps) {
         e.preventDefault();
         if (!name.trim() || !expiryDate) return;
 
+        // Test notification feature
+        if (name.trim().toLowerCase() === 'testnoti') {
+            setIsSubmitting(true);
+
+            // Check if notifications are supported and permitted
+            if (!('Notification' in window)) {
+                alert('Notifications not supported in this browser');
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (Notification.permission !== 'granted') {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    alert('Please enable notifications first');
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            // Reset form immediately
+            setName('');
+            setExpiryDate('');
+            setIsOpen(false);
+            setIsSubmitting(false);
+
+            // Send test notification after 5 seconds
+            setTimeout(() => {
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    // Use service worker to show notification (works in background)
+                    navigator.serviceWorker.ready.then(registration => {
+                        registration.showNotification('🧪 Test Notification!', {
+                            body: 'This is a test notification from Expiry Tracker. If you see this, push notifications are working!',
+                            icon: '/icons/icon-192.png',
+                            badge: '/icons/badge-72.png',
+                            tag: 'test-notification',
+                            requireInteraction: true,
+                        });
+                    });
+                } else {
+                    // Fallback to regular notification
+                    new Notification('🧪 Test Notification!', {
+                        body: 'This is a test notification from Expiry Tracker.',
+                        icon: '/icons/icon-192.png',
+                    });
+                }
+            }, 5000);
+
+            return;
+        }
+
         setIsSubmitting(true);
 
         const newItem: FoodItem = {
