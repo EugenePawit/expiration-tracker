@@ -47,8 +47,8 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
         }
     }
 
-    // LINE Official Account URL (replace with your actual LINE@ URL)
-    const lineAddUrl = 'https://lin.ee/YOUR_LINE_ID'; // TODO: Replace with actual URL
+    // LINE Official Account URL
+    const lineAddUrl = 'https://line.me/R/ti/p/@719rsarz';
 
     if (lineUserId) {
         return (
