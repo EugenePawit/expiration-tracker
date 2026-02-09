@@ -50,16 +50,21 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
 
     async function initOneSignal() {
         try {
+            console.log('[OneSignal] Starting initialization...');
             const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
             if (!appId) {
-                console.error('OneSignal App ID not found');
+                console.error('[OneSignal] App ID not found in environment variables');
+                setError('OneSignal not configured');
+                setIsInitialized(true); // Set to true to stop pulsing
                 return;
             }
+
+            console.log('[OneSignal] App ID found:', appId.substring(0, 8) + '...');
 
             // Wait for OneSignal to load
             if (!window.OneSignal) {
                 console.log('[OneSignal] Waiting for SDK to load...');
-                await new Promise((resolve) => {
+                const loaded = await new Promise((resolve) => {
                     const checkInterval = setInterval(() => {
                         if (window.OneSignal) {
                             clearInterval(checkInterval);
@@ -72,28 +77,38 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
                         resolve(false);
                     }, 10000);
                 });
+
+                if (!loaded) {
+                    throw new Error('OneSignal SDK timeout - script may not be loading');
+                }
             }
 
             if (!window.OneSignal) {
                 throw new Error('OneSignal SDK failed to load');
             }
 
+            console.log('[OneSignal] SDK loaded, calling init...');
             await window.OneSignal.init({
                 appId,
                 allowLocalhostAsSecureOrigin: true,
             });
 
+            console.log('[OneSignal] Initialization complete');
             setIsInitialized(true);
 
             // Check current subscription status
             const isPushSupported = window.OneSignal.Notifications.isPushSupported();
+            console.log('[OneSignal] Push supported:', isPushSupported);
+
             if (isPushSupported) {
                 const permission = await window.OneSignal.Notifications.permissionNative;
+                console.log('[OneSignal] Permission:', permission);
                 setIsSubscribed(permission === 'granted');
             }
         } catch (err) {
-            console.error('OneSignal initialization error:', err);
-            setError('Failed to initialize notifications');
+            console.error('[OneSignal] Initialization error:', err);
+            setError(err instanceof Error ? err.message : 'Failed to initialize notifications');
+            setIsInitialized(true); // Set to true even on error to stop pulsing
         }
     }
 
@@ -151,6 +166,26 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
 
     // Compact mode for header (bell icon only)
     if (compact) {
+        // Show error state
+        if (error) {
+            return (
+                <div className="relative" title={error}>
+                    <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                            />
+                        </svg>
+                    </div>
+                    {/* Error indicator */}
+                    <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-900"></div>
+                </div>
+            );
+        }
+
         if (isSubscribed) {
             return (
                 <div className="relative">
