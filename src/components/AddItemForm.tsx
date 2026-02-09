@@ -25,50 +25,48 @@ export function AddItemForm({ onAdd }: AddItemFormProps) {
         if (name.trim().toLowerCase() === 'testnoti') {
             setIsSubmitting(true);
 
-            // Check if notifications are supported and permitted
-            if (!('Notification' in window)) {
-                alert('Notifications not supported in this browser');
-                setIsSubmitting(false);
-                return;
-            }
-
-            if (Notification.permission !== 'granted') {
-                const permission = await Notification.requestPermission();
-                if (permission !== 'granted') {
-                    alert('Please enable notifications first');
+            try {
+                // Check if notifications are supported
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                    alert('Push notifications not supported in this browser');
                     setIsSubmitting(false);
                     return;
                 }
-            }
 
-            // Reset form immediately
-            setName('');
-            setExpiryDate('');
-            setIsOpen(false);
-            setIsSubmitting(false);
+                const registration = await navigator.serviceWorker.ready;
+                const subscription = await registration.pushManager.getSubscription();
 
-            // Send test notification after 5 seconds
-            setTimeout(() => {
-                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                    // Use service worker to show notification (works in background)
-                    navigator.serviceWorker.ready.then(registration => {
-                        registration.showNotification('🧪 Test Notification!', {
-                            body: 'This is a test notification from Expiry Tracker. If you see this, push notifications are working!',
-                            icon: '/icons/icon-192.png',
-                            badge: '/icons/badge-72.png',
-                            tag: 'test-notification',
-                            requireInteraction: true,
-                        });
-                    });
-                } else {
-                    // Fallback to regular notification
-                    new Notification('🧪 Test Notification!', {
-                        body: 'This is a test notification from Expiry Tracker.',
-                        icon: '/icons/icon-192.png',
-                    });
+                if (!subscription) {
+                    alert('Please enable notifications first by clicking the bell icon.');
+                    setIsSubmitting(false);
+                    return;
                 }
-            }, 5000);
 
+                // Call backend API to trigger real push notification
+                const response = await fetch('/api/test-notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: subscription.endpoint })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    alert('Request sent! You should receive a notification momentarily. 🔔');
+                } else {
+                    console.error('Test failed:', result);
+                    alert(`Test failed: ${result.error || 'Unknown error'}`);
+                }
+
+            } catch (err) {
+                console.error('Test notification error:', err);
+                alert('Error triggering test notification');
+            } finally {
+                setName('');
+                setExpiryDate('');
+                setIsOpen(false);
+                setIsSubmitting(false);
+            }
             return;
         }
 
