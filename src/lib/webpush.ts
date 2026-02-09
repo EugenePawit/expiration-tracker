@@ -32,13 +32,16 @@ export function saveSubscription(
         foodItems,
         updatedAt: new Date().toISOString(),
     });
+    console.log(`[WebPush] Subscription saved. Total subscriptions: ${subscriptions.size}, Food items: ${foodItems.length}`);
 }
 
 export function getAllSubscriptions(): Array<{
     subscription: SerializedPushSubscription;
     foodItems: FoodItem[];
 }> {
-    return Array.from(subscriptions.values());
+    const allSubs = Array.from(subscriptions.values());
+    console.log(`[WebPush] Getting all subscriptions. Count: ${allSubs.length}`);
+    return allSubs;
 }
 
 export function removeSubscription(endpoint: string): void {
@@ -50,6 +53,7 @@ export async function sendPushNotification(
     payload: { title: string; body: string; url?: string }
 ): Promise<boolean> {
     try {
+        console.log(`[WebPush] Attempting to send notification: ${payload.title}`);
         initWebPush();
 
         const pushSubscription = {
@@ -62,14 +66,17 @@ export async function sendPushNotification(
             JSON.stringify(payload)
         );
 
+        console.log(`[WebPush] ✅ Notification sent successfully`);
         return true;
     } catch (error: unknown) {
-        console.error('Error sending push notification:', error);
+        console.error('[WebPush] ❌ Error sending push notification:', error);
 
         // If subscription is no longer valid, remove it
         if (error instanceof Error && 'statusCode' in error) {
             const statusCode = (error as { statusCode: number }).statusCode;
+            console.log(`[WebPush] Status code: ${statusCode}`);
             if (statusCode === 404 || statusCode === 410) {
+                console.log(`[WebPush] Removing expired subscription`);
                 removeSubscription(subscription.endpoint);
             }
         }
