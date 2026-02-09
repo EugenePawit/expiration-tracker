@@ -1,19 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import OneSignalReact from 'react-onesignal';
 import type { FoodItem } from '@/types';
-
-// Declare OneSignal global type
-declare global {
-    interface Window {
-        OneSignal: any;
-    }
-}
 
 interface NotificationSetupProps {
     foodItems: FoodItem[];
     onSubscriptionChange?: (subscribed: boolean) => void;
-    compact?: boolean; // Show as small bell icon in header
+    compact?: boolean;
 }
 
 export function NotificationSetup({ foodItems, onSubscriptionChange, compact = false }: NotificationSetupProps) {
@@ -28,18 +22,14 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
 
     // Sync food items to OneSignal tags whenever they change
     useEffect(() => {
-        if (isInitialized && isSubscribed && foodItems) {
+        if (isInitialized && isSubscribed && foodItems.length >= 0) {
             syncFoodItems();
         }
-    }, [isInitialized, isSubscribed, foodItems]);
+    }, [foodItems, isInitialized, isSubscribed]);
 
     async function syncFoodItems() {
         try {
-            if (!window.OneSignal) {
-                console.warn('[OneSignal] SDK not loaded yet');
-                return;
-            }
-            await window.OneSignal.User.addTags({
+            await OneSignalReact.User.addTags({
                 foodItems: JSON.stringify(foodItems),
             });
             console.log('[OneSignal] Food items synced to tags');
@@ -53,62 +43,34 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
             console.log('[OneSignal] Starting initialization...');
             const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
             if (!appId) {
-                console.error('[OneSignal] App ID not found in environment variables');
+                console.error('[OneSignal] App ID not found');
                 setError('OneSignal not configured');
-                setIsInitialized(true); // Set to true to stop pulsing
+                setIsInitialized(true);
                 return;
             }
 
-            console.log('[OneSignal] App ID found:', appId.substring(0, 8) + '...');
-
-            // Wait for OneSignal to load
-            if (!window.OneSignal) {
-                console.log('[OneSignal] Waiting for SDK to load...');
-                const loaded = await new Promise((resolve) => {
-                    const checkInterval = setInterval(() => {
-                        if (window.OneSignal) {
-                            clearInterval(checkInterval);
-                            resolve(true);
-                        }
-                    }, 100);
-                    // Timeout after 10 seconds
-                    setTimeout(() => {
-                        clearInterval(checkInterval);
-                        resolve(false);
-                    }, 10000);
-                });
-
-                if (!loaded) {
-                    throw new Error('OneSignal SDK timeout - script may not be loading');
-                }
-            }
-
-            if (!window.OneSignal) {
-                throw new Error('OneSignal SDK failed to load');
-            }
-
-            console.log('[OneSignal] SDK loaded, calling init...');
-            await window.OneSignal.init({
+            console.log('[OneSignal] Calling init with App ID');
+            await OneSignalReact.init({
                 appId,
                 allowLocalhostAsSecureOrigin: true,
             });
 
-            console.log('[OneSignal] Initialization complete');
+            console.log('[OneSignal] Init complete');
             setIsInitialized(true);
 
-            // Check current subscription status
-            const isPushSupported = window.OneSignal.Notifications.isPushSupported();
+            // Check subscription status
+            const isPushSupported = OneSignalReact.Notifications.isPushSupported();
             console.log('[OneSignal] Push supported:', isPushSupported);
 
             if (isPushSupported) {
-                const permission = await window.OneSignal.Notifications.permissionNative;
+                const permission = await OneSignalReact.Notifications.permissionNative;
                 console.log('[OneSignal] Permission:', permission);
                 setIsSubscribed(permission === 'granted');
             }
         } catch (err) {
-            console.error('[OneSignal] Initialization error:', err);
-            setError(err instanceof Error ? err.message : 'Failed to initialize notifications');
-            setIsInitialized(true); // Set to true even on error to stop pulsing
+            console.error('[OneSignal] Init error:', err);
+            setError(err instanceof Error ? err.message : 'Failed to initialize');
+            setIsInitialized(true);
         }
     }
 
@@ -117,70 +79,50 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
         setError(null);
 
         try {
-            if (!window.OneSignal) {
-                throw new Error('OneSignal not loaded');
-            }
-
-            // Request permission
-            await window.OneSignal.Notifications.requestPermission();
-
-            // Check if permission was granted
-            const permission = await window.OneSignal.Notifications.permissionNative;
+            await OneSignalReact.Notifications.requestPermission();
+            const permission = await OneSignalReact.Notifications.permissionNative;
             const subscribed = permission === 'granted';
 
             setIsSubscribed(subscribed);
             onSubscriptionChange?.(subscribed);
 
             if (subscribed) {
-                // Tag user with initial empty food items array
-                await window.OneSignal.User.addTags({
-                    foodItems: JSON.stringify([]),
+                await OneSignalReact.User.addTags({
+                    foodItems: JSON.stringify(foodItems),
                 });
             }
         } catch (err) {
-            console.error('Error requesting notification permission:', err);
+            console.error('[OneSignal] Permission error:', err);
             setError('Failed to enable notifications');
         } finally {
             setIsLoading(false);
         }
     }
 
+    // Loading state
     if (!isInitialized) {
-        // In compact mode, show loading icon
         if (compact) {
             return (
                 <div className="w-10 h-10 rounded-full bg-gray-700/50 border border-gray-600/50 flex items-center justify-center">
                     <svg className="w-5 h-5 text-gray-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                        />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
                 </div>
             );
         }
-        return null; // Full mode - hide until ready
+        return null;
     }
 
-    // Compact mode for header (bell icon only)
+    // Compact mode (header bell icon)
     if (compact) {
-        // Show error state
         if (error) {
             return (
                 <div className="relative" title={error}>
                     <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center">
                         <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                            />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                         </svg>
                     </div>
-                    {/* Error indicator */}
                     <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-900"></div>
                 </div>
             );
@@ -191,15 +133,9 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
                 <div className="relative">
                     <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
                         <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                            />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                         </svg>
                     </div>
-                    {/* Active indicator */}
                     <div className="absolute top-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-gray-900"></div>
                 </div>
             );
@@ -213,30 +149,25 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
                 className="w-10 h-10 rounded-full bg-gray-700/50 hover:bg-gray-600/50 border border-gray-600/50 hover:border-gray-500/50 flex items-center justify-center transition-all disabled:opacity-50"
             >
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
             </button>
         );
     }
 
-    // Full mode for main content area
+    // Full mode (card view)
     if (isSubscribed) {
         return (
             <div className="w-full p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                     </div>
-                    <div>
-                        <p className="text-emerald-300 font-medium">Notifications Enabled</p>
-                        <p className="text-sm text-emerald-300/70">You'll get reminders for expiring food!</p>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-semibold text-emerald-400">Notifications Enabled</h3>
+                        <p className="text-xs text-emerald-400/70">You'll receive expiry reminders</p>
                     </div>
                 </div>
             </div>
@@ -244,35 +175,32 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
     }
 
     return (
-        <div className="w-full">
+        <div className="w-full p-4 rounded-2xl bg-gray-800/50 border border-gray-700/50">
+            <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-200">Enable Expiry Reminders</h3>
+                    <p className="text-xs text-gray-400">Get notified when food is about to expire</p>
+                </div>
+            </div>
+
+            {error && (
+                <p className="text-xs text-red-400 mb-2">
+                    {error}
+                </p>
+            )}
+
             <button
                 onClick={handleEnableNotifications}
                 disabled={isLoading}
-                className="
-                    w-full py-4 px-6 rounded-2xl
-                    bg-gradient-to-r from-amber-500 to-orange-500
-                    hover:from-amber-400 hover:to-orange-400
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                    text-white font-semibold text-lg
-                    shadow-lg shadow-amber-500/25
-                    hover:shadow-xl hover:shadow-amber-500/30
-                    transition-all duration-300 hover:scale-[1.02]
-                    flex items-center justify-center gap-3
-                "
+                className="w-full px-4 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
-                </svg>
-                {isLoading ? 'Enabling...' : 'Enable Expiry Reminders'}
+                {isLoading ? 'Enabling...' : 'Enable Notifications'}
             </button>
-            {error && (
-                <p className="mt-2 text-sm text-red-400">{error}</p>
-            )}
         </div>
     );
 }
