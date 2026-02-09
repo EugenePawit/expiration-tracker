@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { setUser } from '@/lib/redis';
 import type { FoodItem } from '@/types';
 
 // API endpoint to sync food items from client to server
@@ -14,8 +14,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Update user's food items in KV storage
-        await kv.set(`line:user:${userId}`, {
+        // Update user's food items in Redis storage
+        await setUser(userId, {
             userId,
             foodItems: foodItems as FoodItem[],
             updatedAt: new Date().toISOString(),

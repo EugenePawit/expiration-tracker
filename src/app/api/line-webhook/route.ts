@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client, WebhookEvent, MessageEvent } from '@line/bot-sdk';
-import { kv } from '@vercel/kv';
+import { setUser, getUser } from '@/lib/redis';
 import type { FoodItem } from '@/types';
 
 const config = {
@@ -47,7 +47,7 @@ async function handleFollow(event: WebhookEvent) {
     if (!userId) return;
 
     // Initialize user with empty food items
-    await kv.set(`line:user:${userId}`, {
+    await setUser(userId, {
         userId,
         foodItems: [],
         registeredAt: new Date().toISOString(),
@@ -69,11 +69,11 @@ async function handleMessage(event: MessageEvent) {
     const text = event.message.type === 'text' ? event.message.text.toLowerCase() : '';
 
     // Check if user exists
-    const userData = await kv.get<{ userId: string; foodItems: FoodItem[] }>(`line:user:${userId}`);
+    const userData = await getUser(userId);
 
     if (!userData) {
         // New user registration via message
-        await kv.set(`line:user:${userId}`, {
+        await setUser(userId, {
             userId,
             foodItems: [],
             registeredAt: new Date().toISOString(),

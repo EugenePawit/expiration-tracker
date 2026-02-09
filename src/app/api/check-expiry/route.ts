@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client } from '@line/bot-sdk';
-import { kv } from '@vercel/kv';
+import { getAllUsers } from '@/lib/redis';
 import { getDaysRemaining } from '@/types';
 import type { FoodItem } from '@/types';
 
@@ -25,13 +25,12 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        // Get all LINE users from KV
-        const keys = await kv.keys('line:user:*');
+        // Get all LINE users from Redis
+        const allUsers = await getAllUsers();
         let notificationsSent = 0;
         let totalExpiringItems = 0;
 
-        for (const key of keys) {
-            const userData = await kv.get<{ userId: string; foodItems: FoodItem[] }>(key);
+        for (const userData of allUsers) {
 
             if (!userData || !userData.foodItems) continue;
 
@@ -75,7 +74,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            users: keys.length,
+            users: allUsers.length,
             notificationsSent,
             totalExpiringItems,
             timestamp: new Date().toISOString(),
