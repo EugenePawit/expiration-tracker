@@ -1,8 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import OneSignalReact from 'react-onesignal';
 import type { FoodItem } from '@/types';
+
+// Declare OneSignal global type
+declare global {
+    interface Window {
+        OneSignal: any;
+    }
+}
 
 interface NotificationSetupProps {
     foodItems: FoodItem[];
@@ -28,7 +34,11 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
 
     async function syncFoodItems() {
         try {
-            await OneSignalReact.User.addTags({
+            if (!window.OneSignal) {
+                console.warn('[OneSignal] SDK not loaded yet');
+                return;
+            }
+            await window.OneSignal.User.addTags({
                 foodItems: JSON.stringify(foodItems),
             });
             console.log('[OneSignal] Food items synced to tags');
@@ -45,7 +55,29 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
                 return;
             }
 
-            await OneSignalReact.init({
+            // Wait for OneSignal to load
+            if (!window.OneSignal) {
+                console.log('[OneSignal] Waiting for SDK to load...');
+                await new Promise((resolve) => {
+                    const checkInterval = setInterval(() => {
+                        if (window.OneSignal) {
+                            clearInterval(checkInterval);
+                            resolve(true);
+                        }
+                    }, 100);
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve(false);
+                    }, 10000);
+                });
+            }
+
+            if (!window.OneSignal) {
+                throw new Error('OneSignal SDK failed to load');
+            }
+
+            await window.OneSignal.init({
                 appId,
                 allowLocalhostAsSecureOrigin: true,
             });
@@ -53,9 +85,9 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
             setIsInitialized(true);
 
             // Check current subscription status
-            const isPushSupported = OneSignalReact.Notifications.isPushSupported();
+            const isPushSupported = window.OneSignal.Notifications.isPushSupported();
             if (isPushSupported) {
-                const permission = await OneSignalReact.Notifications.permissionNative;
+                const permission = await window.OneSignal.Notifications.permissionNative;
                 setIsSubscribed(permission === 'granted');
             }
         } catch (err) {
@@ -69,11 +101,15 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
         setError(null);
 
         try {
+            if (!window.OneSignal) {
+                throw new Error('OneSignal not loaded');
+            }
+
             // Request permission
-            await OneSignalReact.Notifications.requestPermission();
+            await window.OneSignal.Notifications.requestPermission();
 
             // Check if permission was granted
-            const permission = await OneSignalReact.Notifications.permissionNative;
+            const permission = await window.OneSignal.Notifications.permissionNative;
             const subscribed = permission === 'granted';
 
             setIsSubscribed(subscribed);
@@ -81,7 +117,7 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
 
             if (subscribed) {
                 // Tag user with initial empty food items array
-                await OneSignalReact.User.addTags({
+                await window.OneSignal.User.addTags({
                     foodItems: JSON.stringify([]),
                 });
             }
