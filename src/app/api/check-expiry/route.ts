@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDaysRemaining } from '@/types';
-import type { FoodItem } from '@/types';
+import { kv } from '@vercel/kv';
+import webpush from 'web-push';
 
-// OneSignal REST API endpoint
-const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
+// Configure web-push with VAPID keys
+webpush.setVapidDetails(
+    'mailto:contact@expiration-tracker.vercel.app',
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '',
+    process.env.VAPID_PRIVATE_KEY || ''
+);
 
 // This endpoint is called by external cron service (cron-job.org)
 export async function GET(request: NextRequest) {
@@ -19,55 +23,68 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
-        const restApiKey = process.env.ONESIGNAL_REST_API_KEY;
+        // Get all subscription keys
+        const subscriptionKeys = await kv.smembers('push:subscriptions');
 
-        if (!appId || !restApiKey) {
-            throw new Error('OneSignal credentials not configured');
+        if (!subscriptionKeys || subscriptionKeys.length === 0) {
+            return NextResponse.json({
+                success: true,
+                message: 'No subscriptions found',
+                sent: 0
+            });
         }
 
-        // Get all users with tags using OneSignal API
-        // Note: We'll use a simpler approach - send to all subscribed users
-        // and check their tags to filter expiring items
+        console.log(`[Push] Found ${subscriptionKeys.length} subscriptions`);
 
-        // Since we store foodItems as tags, we need to fetch users and check their tags
-        // For MVP, we'll send a notification to all users and they can check locally
-        // A more advanced approach would use OneSignal Segments
-
-        const response = await fetch(ONESIGNAL_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Basic ${restApiKey}`,
-            },
-            body: JSON.stringify({
-                app_id: appId,
-                included_segments: ['Subscribed Users'],
-                contents: {
-                    en: 'Check your food expiry tracker - you may have items expiring soon!',
-                },
-                headings: {
-                    en: '🚨 Food Expiry Reminder',
-                },
-                url: '/',
-                // We can use filters to target specific users with expiring items
-                // For now, sending to all users
-            }),
+        const payload = JSON.stringify({
+            title: '🚨 Food Expiry Reminder',
+            body: 'Check your food expiry tracker - you may have items expiring soon!',
+            url: '/'
         });
 
-        const result = await response.json();
+        let sent = 0;
+        let failed = 0;
+        const failedKeys: string[] = [];
 
-        if (!response.ok) {
-            console.error('OneSignal API error:', result);
-            throw new Error(`OneSignal API error: ${result.errors || 'Unknown error'}`);
+        // Send to all subscriptions
+        for (const key of subscriptionKeys) {
+            try {
+                const subscription = await kv.get(key as string);
+
+                if (!subscription) {
+                    failedKeys.push(key as string);
+                    continue;
+                }
+
+                await webpush.sendNotification(
+                    subscription as webpush.PushSubscription,
+                    payload
+                );
+                sent++;
+                console.log(`[Push] Sent to ${key}`);
+            } catch (err: any) {
+                console.error(`[Push] Failed to send to ${key}:`, err.message);
+                failed++;
+
+                // If subscription is expired/invalid, remove it
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    failedKeys.push(key as string);
+                }
+            }
         }
 
-        console.log('[OneSignal] Notification sent successfully:', result);
+        // Clean up invalid subscriptions
+        for (const key of failedKeys) {
+            await kv.del(key);
+            await kv.srem('push:subscriptions', key);
+            console.log(`[Push] Removed invalid subscription: ${key}`);
+        }
 
         return NextResponse.json({
             success: true,
-            recipients: result.recipients || 0,
-            oneSignalId: result.id,
+            sent,
+            failed,
+            cleaned: failedKeys.length,
             timestamp: new Date().toISOString(),
         });
     } catch (error) {
@@ -82,10 +99,4 @@ export async function GET(request: NextRequest) {
 // Also support POST for flexibility
 export async function POST(request: NextRequest) {
     return GET(request);
-}
-
-function getDaysText(days: number): string {
-    if (days === 0) return 'today!';
-    if (days === 1) return 'tomorrow!';
-    return `in ${days} days`;
 }
