@@ -91,6 +91,10 @@ export function NotificationSetup({ foodItems, onSubscriptionChange, compact = f
             await window.OneSignal.init({
                 appId,
                 allowLocalhostAsSecureOrigin: true,
+                serviceWorkerParam: {
+                    scope: '/'
+                },
+                serviceWorkerPath: '/sw.js'
             });
 
             console.log('[OneSignal] Initialization complete');
