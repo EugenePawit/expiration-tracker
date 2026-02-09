@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { redis } from '@/lib/redis';
 import webpush from 'web-push';
 
 // Configure web-push with VAPID keys
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     try {
         // Get all subscription keys
-        const subscriptionKeys = await kv.smembers('push:subscriptions');
+        const subscriptionKeys = await redis.smembers('push:subscriptions');
 
         if (!subscriptionKeys || subscriptionKeys.length === 0) {
             return NextResponse.json({
@@ -49,12 +49,15 @@ export async function GET(request: NextRequest) {
         // Send to all subscriptions
         for (const key of subscriptionKeys) {
             try {
-                const subscription = await kv.get(key as string);
+                // ioredis returns string, need to parse
+                const subscriptionData = await redis.get(key);
 
-                if (!subscription) {
-                    failedKeys.push(key as string);
+                if (!subscriptionData) {
+                    failedKeys.push(key);
                     continue;
                 }
+
+                const subscription = JSON.parse(subscriptionData);
 
                 await webpush.sendNotification(
                     subscription as webpush.PushSubscription,
@@ -68,15 +71,15 @@ export async function GET(request: NextRequest) {
 
                 // If subscription is expired/invalid, remove it
                 if (err.statusCode === 410 || err.statusCode === 404) {
-                    failedKeys.push(key as string);
+                    failedKeys.push(key);
                 }
             }
         }
 
         // Clean up invalid subscriptions
         for (const key of failedKeys) {
-            await kv.del(key);
-            await kv.srem('push:subscriptions', key);
+            await redis.del(key);
+            await redis.srem('push:subscriptions', key);
             console.log(`[Push] Removed invalid subscription: ${key}`);
         }
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kv } from '@vercel/kv';
+import { redis } from '@/lib/redis';
 
 export async function POST(request: NextRequest) {
     try {
@@ -16,13 +16,15 @@ export async function POST(request: NextRequest) {
         const key = `push:${Buffer.from(subscription.endpoint).toString('base64').slice(0, 50)}`;
 
         // Store subscription with timestamp
-        await kv.set(key, {
+        // ioredis uses JSON.stringify implicitly for objects? No, usually stores strings.
+        // We should stringify it manually just to be safe and consistent.
+        await redis.set(key, JSON.stringify({
             ...subscription,
             createdAt: new Date().toISOString()
-        });
+        }));
 
         // Also add to set for easy iteration
-        await kv.sadd('push:subscriptions', key);
+        await redis.sadd('push:subscriptions', key);
 
         console.log('[Subscribe] Saved subscription:', key);
 
@@ -49,8 +51,8 @@ export async function DELETE(request: NextRequest) {
 
         const key = `push:${Buffer.from(endpoint).toString('base64').slice(0, 50)}`;
 
-        await kv.del(key);
-        await kv.srem('push:subscriptions', key);
+        await redis.del(key);
+        await redis.srem('push:subscriptions', key);
 
         console.log('[Subscribe] Removed subscription:', key);
 
