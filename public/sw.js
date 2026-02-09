@@ -1,9 +1,3 @@
-// Minimal service worker for PWA
-// LINE notifications are sent via push messages to the LINE app
-self.addEventListener('install', () => {
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', () => {
-    self.clients.claim();
-});
+// OneSignal Service Worker
+// This file is automatically loaded by OneSignal
+importScripts('https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js');

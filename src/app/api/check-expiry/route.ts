@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Client } from '@line/bot-sdk';
-import { getAllUsers } from '@/lib/redis';
 import { getDaysRemaining } from '@/types';
 import type { FoodItem } from '@/types';
 
-const config = {
-    channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
-    channelSecret: process.env.LINE_CHANNEL_SECRET || '',
-};
-
-const client = new Client(config);
+// OneSignal REST API endpoint
+const ONESIGNAL_API_URL = 'https://onesignal.com/api/v1/notifications';
 
 // This endpoint is called by external cron service (cron-job.org)
 export async function GET(request: NextRequest) {
@@ -25,64 +19,61 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        // Get all LINE users from Redis
-        const allUsers = await getAllUsers();
-        let notificationsSent = 0;
-        let totalExpiringItems = 0;
+        const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
+        const restApiKey = process.env.ONESIGNAL_REST_API_KEY;
 
-        for (const userData of allUsers) {
-
-            if (!userData || !userData.foodItems) continue;
-
-            // Filter items expiring within 2 days
-            const expiringItems = userData.foodItems.filter((item: FoodItem) => {
-                const days = getDaysRemaining(item.expiryDate);
-                return days >= 0 && days <= 2;
-            });
-
-            if (expiringItems.length === 0) continue;
-
-            totalExpiringItems += expiringItems.length;
-
-            // Build notification message
-            const title = expiringItems.length === 1
-                ? `🚨 ${expiringItems[0].name} expires soon!`
-                : `🚨 ${expiringItems.length} items expiring soon!`;
-
-            const itemsList = expiringItems
-                .slice(0, 5)
-                .map((item: FoodItem) => `• ${item.name} - ${getDaysText(getDaysRemaining(item.expiryDate))}`)
-                .join('\n');
-
-            const moreText = expiringItems.length > 5
-                ? `\n...and ${expiringItems.length - 5} more`
-                : '';
-
-            const message = `${title}\n\n${itemsList}${moreText}\n\nOpen the app to check your items!`;
-
-            try {
-                await client.pushMessage(userData.userId, {
-                    type: 'text',
-                    text: message,
-                });
-                notificationsSent++;
-                console.log(`[LINE] Notification sent to ${userData.userId}`);
-            } catch (error) {
-                console.error(`[LINE] Failed to send to ${userData.userId}:`, error);
-            }
+        if (!appId || !restApiKey) {
+            throw new Error('OneSignal credentials not configured');
         }
+
+        // Get all users with tags using OneSignal API
+        // Note: We'll use a simpler approach - send to all subscribed users
+        // and check their tags to filter expiring items
+
+        // Since we store foodItems as tags, we need to fetch users and check their tags
+        // For MVP, we'll send a notification to all users and they can check locally
+        // A more advanced approach would use OneSignal Segments
+
+        const response = await fetch(ONESIGNAL_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${restApiKey}`,
+            },
+            body: JSON.stringify({
+                app_id: appId,
+                included_segments: ['Subscribed Users'],
+                contents: {
+                    en: 'Check your food expiry tracker - you may have items expiring soon!',
+                },
+                headings: {
+                    en: '🚨 Food Expiry Reminder',
+                },
+                url: '/',
+                // We can use filters to target specific users with expiring items
+                // For now, sending to all users
+            }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            console.error('OneSignal API error:', result);
+            throw new Error(`OneSignal API error: ${result.errors || 'Unknown error'}`);
+        }
+
+        console.log('[OneSignal] Notification sent successfully:', result);
 
         return NextResponse.json({
             success: true,
-            users: allUsers.length,
-            notificationsSent,
-            totalExpiringItems,
+            recipients: result.recipients || 0,
+            oneSignalId: result.id,
             timestamp: new Date().toISOString(),
         });
     } catch (error) {
         console.error('Error in check-expiry:', error);
         return NextResponse.json(
-            { error: 'Failed to check expiring items', details: error instanceof Error ? error.message : 'Unknown error' },
+            { error: 'Failed to send notifications', details: error instanceof Error ? error.message : 'Unknown error' },
             { status: 500 }
         );
     }
@@ -94,7 +85,7 @@ export async function POST(request: NextRequest) {
 }
 
 function getDaysText(days: number): string {
-    if (days === 0) return 'expires today!';
-    if (days === 1) return 'expires tomorrow!';
-    return `expires in ${days} days`;
+    if (days === 0) return 'today!';
+    if (days === 1) return 'tomorrow!';
+    return `in ${days} days`;
 }

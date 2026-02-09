@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import QRCode from 'react-qr-code';
+import OneSignalReact from 'react-onesignal';
 import type { FoodItem } from '@/types';
 
 interface NotificationSetupProps {
@@ -10,47 +10,94 @@ interface NotificationSetupProps {
 }
 
 export function NotificationSetup({ foodItems, onSubscriptionChange }: NotificationSetupProps) {
-    const [lineUserId, setLineUserId] = useState<string | null>(null);
-    const [showQR, setShowQR] = useState(false);
+    const [isInitialized, setIsInitialized] = useState(false);
+    const [isSubscribed, setIsSubscribed] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // Check if user has LINE connected
-        const storedUserId = localStorage.getItem('lineUserId');
-        if (storedUserId) {
-            setLineUserId(storedUserId);
-            onSubscriptionChange?.(true);
-        }
-    }, [onSubscriptionChange]);
+        initOneSignal();
+    }, []);
 
-    // Sync food items to server whenever they change
+    // Sync food items to OneSignal tags whenever they change
     useEffect(() => {
-        if (lineUserId && foodItems) {
+        if (isInitialized && isSubscribed && foodItems) {
             syncFoodItems();
         }
-    }, [lineUserId, foodItems]);
+    }, [isInitialized, isSubscribed, foodItems]);
 
     async function syncFoodItems() {
-        if (!lineUserId) return;
-
         try {
-            await fetch('/api/line-sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: lineUserId,
-                    foodItems,
-                }),
+            await OneSignalReact.User.addTags({
+                foodItems: JSON.stringify(foodItems),
             });
-            console.log('[LINE] Food items synced');
-        } catch (error) {
-            console.error('[LINE] Failed to sync food items:', error);
+            console.log('[OneSignal] Food items synced to tags');
+        } catch (err) {
+            console.error('[OneSignal] Failed to sync food items:', err);
         }
     }
 
-    // LINE Official Account URL
-    const lineAddUrl = 'https://line.me/R/ti/p/@719rsarz';
+    async function initOneSignal() {
+        try {
+            const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
+            if (!appId) {
+                console.error('OneSignal App ID not found');
+                return;
+            }
 
-    if (lineUserId) {
+            await OneSignalReact.init({
+                appId,
+                allowLocalhostAsSecureOrigin: true,
+            });
+
+            setIsInitialized(true);
+
+            // Check current subscription status
+            const isPushSupported = OneSignalReact.Notifications.isPushSupported();
+            if (isPushSupported) {
+                const permission = await OneSignalReact.Notifications.permissionNative;
+                setIsSubscribed(permission === 'granted');
+            }
+        } catch (err) {
+            console.error('OneSignal initialization error:', err);
+            setError('Failed to initialize notifications');
+        }
+    }
+
+    async function handleEnableNotifications() {
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // Request permission
+            await OneSignalReact.Notifications.requestPermission();
+
+            // Check if permission was granted
+            const permission = await OneSignalReact.Notifications.permissionNative;
+            const subscribed = permission === 'granted';
+
+            setIsSubscribed(subscribed);
+            onSubscriptionChange?.(subscribed);
+
+            if (subscribed) {
+                // Tag user with initial empty food items array
+                await OneSignalReact.User.addTags({
+                    foodItems: JSON.stringify([]),
+                });
+            }
+        } catch (err) {
+            console.error('Error requesting notification permission:', err);
+            setError('Failed to enable notifications');
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    if (!isInitialized) {
+        return null; // Or a loading state
+    }
+
+    if (isSubscribed) {
         return (
             <div className="w-full p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
                 <div className="flex items-center gap-3">
@@ -59,86 +106,44 @@ export function NotificationSetup({ foodItems, onSubscriptionChange }: Notificat
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                     </div>
-                    <div className="flex-1">
-                        <p className="text-emerald-300 font-medium">LINE Reminders Active</p>
-                        <p className="text-sm text-emerald-300/70">You'll receive daily notifications via LINE!</p>
+                    <div>
+                        <p className="text-emerald-300 font-medium">Notifications Enabled</p>
+                        <p className="text-sm text-emerald-300/70">You'll get reminders for expiring food!</p>
                     </div>
-                    <button
-                        onClick={() => {
-                            if (confirm('Disconnect LINE notifications?')) {
-                                localStorage.removeItem('lineUserId');
-                                setLineUserId(null);
-                                onSubscriptionChange?.(false);
-                            }
-                        }}
-                        className="text-emerald-300/50 hover:text-emerald-300 text-sm"
-                    >
-                        Disconnect
-                    </button>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="w-full space-y-3">
+        <div className="w-full">
             <button
-                onClick={() => setShowQR(!showQR)}
+                onClick={handleEnableNotifications}
+                disabled={isLoading}
                 className="
                     w-full py-4 px-6 rounded-2xl
-                    bg-gradient-to-r from-green-500 to-emerald-500
-                    hover:from-green-400 hover:to-emerald-400
+                    bg-gradient-to-r from-amber-500 to-orange-500
+                    hover:from-amber-400 hover:to-orange-400
+                    disabled:opacity-50 disabled:cursor-not-allowed
                     text-white font-semibold text-lg
-                    shadow-lg shadow-green-500/25
-                    hover:shadow-xl hover:shadow-green-500/30
+                    shadow-lg shadow-amber-500/25
+                    hover:shadow-xl hover:shadow-amber-500/30
                     transition-all duration-300 hover:scale-[1.02]
                     flex items-center justify-center gap-3
                 "
             >
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.346 0 .627.285.627.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314" />
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                    />
                 </svg>
-                {showQR ? 'Hide QR Code' : 'Enable LINE Reminders'}
+                {isLoading ? 'Enabling...' : 'Enable Expiry Reminders'}
             </button>
-
-            {showQR && (
-                <div className="p-6 rounded-2xl bg-gray-800/50 border border-white/10 space-y-4">
-                    <div className="text-center">
-                        <h3 className="text-lg font-semibold text-white mb-2">Connect with LINE</h3>
-                        <p className="text-sm text-gray-400 mb-4">
-                            Scan this QR code with your LINE app to receive daily reminders
-                        </p>
-                    </div>
-
-                    <div className="flex justify-center p-4 bg-white rounded-xl">
-                        <QRCode value={lineAddUrl} size={200} />
-                    </div>
-
-                    <div className="space-y-2 text-sm text-gray-400">
-                        <p className="font-medium text-white">Instructions:</p>
-                        <ol className="list-decimal list-inside space-y-1 ml-2">
-                            <li>Open LINE app on your phone</li>
-                            <li>Tap the QR code scanner</li>
-                            <li>Scan the code above</li>
-                            <li>Add the bot as a friend</li>
-                            <li>Send any message to activate</li>
-                        </ol>
-                    </div>
-
-                    <button
-                        onClick={() => {
-                            const testUserId = prompt('Paste your LINE User ID (for testing):');
-                            if (testUserId) {
-                                localStorage.setItem('lineUserId', testUserId);
-                                setLineUserId(testUserId);
-                                onSubscriptionChange?.(true);
-                            }
-                        }}
-                        className="w-full py-2 px-4 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm"
-                    >
-                        Manual Setup (For Testing)
-                    </button>
-                </div>
+            {error && (
+                <p className="mt-2 text-sm text-red-400">{error}</p>
             )}
         </div>
     );
