@@ -59,21 +59,26 @@ export function Dashboard() {
                             </div>
                         </div>
 
-                        {/* Status badges */}
-                        {items.length > 0 && (
-                            <div className="flex gap-2">
-                                {(statusCounts.expired || 0) + (statusCounts.critical || 0) > 0 && (
-                                    <span className="px-2 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold">
-                                        {(statusCounts.expired || 0) + (statusCounts.critical || 0)} urgent
-                                    </span>
-                                )}
-                                {statusCounts.warning > 0 && (
-                                    <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">
-                                        {statusCounts.warning} soon
-                                    </span>
-                                )}
-                            </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {/* Notification Icon */}
+                            <NotificationSetup foodItems={items} compact />
+
+                            {/* Status badges */}
+                            {items.length > 0 && (
+                                <div className="flex gap-2">
+                                    {(statusCounts.expired || 0) + (statusCounts.critical || 0) > 0 && (
+                                        <span className="px-2 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-bold">
+                                            {(statusCounts.expired || 0) + (statusCounts.critical || 0)} urgent
+                                        </span>
+                                    )}
+                                    {statusCounts.warning > 0 && (
+                                        <span className="px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">
+                                            {statusCounts.warning} soon
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </header>
@@ -82,9 +87,6 @@ export function Dashboard() {
             <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
                 {/* Add Item Form */}
                 <AddItemForm onAdd={handleAddItem} />
-
-                {/* Notification Setup */}
-                <NotificationSetup foodItems={items} />
 
                 {/* Items List */}
                 {items.length === 0 ? (
