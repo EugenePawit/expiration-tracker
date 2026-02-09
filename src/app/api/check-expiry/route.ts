@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
             if (!userData || !userData.foodItems) continue;
 
             // Filter items expiring within 2 days
-            const expiringItems = userData.foodItems.filter(item => {
+            const expiringItems = userData.foodItems.filter((item: FoodItem) => {
                 const days = getDaysRemaining(item.expiryDate);
                 return days >= 0 && days <= 2;
             });
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
             const itemsList = expiringItems
                 .slice(0, 5)
-                .map(item => `• ${item.name} - ${getDaysText(getDaysRemaining(item.expiryDate))}`)
+                .map((item: FoodItem) => `• ${item.name} - ${getDaysText(getDaysRemaining(item.expiryDate))}`)
                 .join('\n');
 
             const moreText = expiringItems.length > 5
