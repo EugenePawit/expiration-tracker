@@ -1,12 +1,12 @@
-'use client';
-
 import { useEffect, useState } from 'react';
+import type { FoodItem } from '@/types';
 
 interface NotificationSetupProps {
     compact?: boolean;
+    items?: FoodItem[];
 }
 
-export function NotificationSetup({ compact = false }: NotificationSetupProps) {
+export function NotificationSetup({ compact = false, items = [] }: NotificationSetupProps) {
     const [isSupported, setIsSupported] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -15,6 +15,35 @@ export function NotificationSetup({ compact = false }: NotificationSetupProps) {
     useEffect(() => {
         checkSupport();
     }, []);
+
+    // Sync items whenever they change (if subscribed)
+    useEffect(() => {
+        if (isSubscribed && items.length >= 0) {
+            syncItems();
+        }
+    }, [items, isSubscribed]);
+
+    async function syncItems() {
+        try {
+            const registration = await navigator.serviceWorker.ready;
+            const subscription = await registration.pushManager.getSubscription();
+
+            if (!subscription) return;
+
+            await fetch('/api/sync-items', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    endpoint: subscription.endpoint,
+                    items
+                })
+            });
+
+            console.log('[Push] Synced items:', items.length);
+        } catch (err) {
+            console.error('[Push] Sync error:', err);
+        }
+    }
 
     async function checkSupport() {
         try {
@@ -81,11 +110,14 @@ export function NotificationSetup({ compact = false }: NotificationSetupProps) {
 
             console.log('[Push] Subscribed:', subscription);
 
-            // Save to backend
+            // Save to backend WITH current items
             const response = await fetch('/api/subscribe', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(subscription.toJSON())
+                body: JSON.stringify({
+                    subscription: subscription.toJSON(),
+                    items
+                })
             });
 
             if (!response.ok) {
@@ -93,7 +125,7 @@ export function NotificationSetup({ compact = false }: NotificationSetupProps) {
             }
 
             setIsSubscribed(true);
-            console.log('[Push] Subscription saved to backend');
+            console.log('[Push] Subscription saved to backend with items');
         } catch (err) {
             console.error('[Push] Subscribe error:', err);
             setError(err instanceof Error ? err.message : 'Failed to subscribe');

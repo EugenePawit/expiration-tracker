@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
+import type { FoodItem } from '@/types';
 
 export async function POST(request: NextRequest) {
     try {
-        const subscription = await request.json();
+        const body = await request.json();
+        const { subscription, items } = body as { subscription: any; items?: FoodItem[] };
 
-        if (!subscription.endpoint) {
+        // Support both old format (just subscription) and new format (with items)
+        const subscriptionData = subscription || body;
+
+        if (!subscriptionData.endpoint) {
             return NextResponse.json(
                 { error: 'Invalid subscription: missing endpoint' },
                 { status: 400 }
@@ -13,20 +18,20 @@ export async function POST(request: NextRequest) {
         }
 
         // Use endpoint as unique key
-        const key = `push:${Buffer.from(subscription.endpoint).toString('base64').slice(0, 50)}`;
+        const key = `push:${Buffer.from(subscriptionData.endpoint).toString('base64').slice(0, 50)}`;
 
-        // Store subscription with timestamp
-        // ioredis uses JSON.stringify implicitly for objects? No, usually stores strings.
-        // We should stringify it manually just to be safe and consistent.
+        // Store subscription with timestamp and items
         await redis.set(key, JSON.stringify({
-            ...subscription,
-            createdAt: new Date().toISOString()
+            ...subscriptionData,
+            items: items || [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         }));
 
         // Also add to set for easy iteration
         await redis.sadd('push:subscriptions', key);
 
-        console.log('[Subscribe] Saved subscription:', key);
+        console.log('[Subscribe] Saved subscription:', key, `with ${items?.length || 0} items`);
 
         return NextResponse.json({ success: true, key });
     } catch (error) {

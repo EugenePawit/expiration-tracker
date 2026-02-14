@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { redis } from '@/lib/redis';
 import webpush from 'web-push';
+import { getDaysRemaining, type FoodItem } from '@/types';
 
 // Configure web-push with VAPID keys
 webpush.setVapidDetails(
@@ -36,14 +37,9 @@ export async function GET(request: NextRequest) {
 
         console.log(`[Push] Found ${subscriptionKeys.length} subscriptions`);
 
-        const payload = JSON.stringify({
-            title: '🚨 Food Expiry Reminder',
-            body: 'Check your food expiry tracker - you may have items expiring soon!',
-            url: '/'
-        });
-
         let sent = 0;
         let failed = 0;
+        let skipped = 0;
         const failedKeys: string[] = [];
 
         // Send to all subscriptions
@@ -57,14 +53,57 @@ export async function GET(request: NextRequest) {
                     continue;
                 }
 
-                const subscription = JSON.parse(subscriptionData);
+                const userData = JSON.parse(subscriptionData);
+                const items: FoodItem[] = userData.items || [];
+
+                // Filter items expiring in the next 3 days
+                const expiringItems = items.filter(item => {
+                    const daysLeft = getDaysRemaining(item.expiryDate);
+                    return daysLeft >= 0 && daysLeft <= 3;
+                }).sort((a, b) => getDaysRemaining(a.expiryDate) - getDaysRemaining(b.expiryDate));
+
+                // Skip if no items expiring soon
+                if (expiringItems.length === 0) {
+                    console.log(`[Push] Skipping ${key}: no expiring items`);
+                    skipped++;
+                    continue;
+                }
+
+                // Create personalized message
+                let title = '🚨 Food Expiry Alert';
+                let body = '';
+
+                if (expiringItems.length === 1) {
+                    const item = expiringItems[0];
+                    const days = getDaysRemaining(item.expiryDate);
+                    if (days === 0) {
+                        body = `${item.name} expires TODAY!`;
+                    } else if (days === 1) {
+                        body = `${item.name} expires TOMORROW!`;
+                    } else {
+                        body = `${item.name} expires in ${days} days`;
+                    }
+                } else {
+                    const mostUrgent = expiringItems[0];
+                    const days = getDaysRemaining(mostUrgent.expiryDate);
+                    body = `${expiringItems.length} items expiring soon! ${mostUrgent.name} ${days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `in ${days} days`}`;
+                }
+
+                const payload = JSON.stringify({
+                    title,
+                    body,
+                    url: '/'
+                });
+
+                // Remove the push subscription fields to get clean PushSubscription object
+                const { items: _, createdAt, updatedAt, ...pushSubscription } = userData;
 
                 await webpush.sendNotification(
-                    subscription as webpush.PushSubscription,
+                    pushSubscription as webpush.PushSubscription,
                     payload
                 );
                 sent++;
-                console.log(`[Push] Sent to ${key}`);
+                console.log(`[Push] Sent to ${key}: ${expiringItems.length} items`);
             } catch (err: any) {
                 console.error(`[Push] Failed to send to ${key}:`, err.message);
                 failed++;
@@ -86,6 +125,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             success: true,
             sent,
+            skipped,
             failed,
             cleaned: failedKeys.length,
             timestamp: new Date().toISOString(),

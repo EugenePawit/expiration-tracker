@@ -61,7 +61,7 @@ export function Dashboard() {
 
                         <div className="flex items-center gap-3">
                             {/* Notification Icon */}
-                            <NotificationSetup compact />
+                            <NotificationSetup compact items={items} />
 
                             {/* Status badges */}
                             {items.length > 0 && (
