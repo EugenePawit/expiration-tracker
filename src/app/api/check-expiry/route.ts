@@ -69,41 +69,52 @@ export async function GET(request: NextRequest) {
                     continue;
                 }
 
-                // Create personalized message
-                let title = '🚨 Food Expiry Alert';
-                let body = '';
-
-                if (expiringItems.length === 1) {
-                    const item = expiringItems[0];
-                    const days = getDaysRemaining(item.expiryDate);
-                    if (days === 0) {
-                        body = `${item.name} expires TODAY!`;
-                    } else if (days === 1) {
-                        body = `${item.name} expires TOMORROW!`;
-                    } else {
-                        body = `${item.name} expires in ${days} days`;
-                    }
-                } else {
-                    const mostUrgent = expiringItems[0];
-                    const days = getDaysRemaining(mostUrgent.expiryDate);
-                    body = `${expiringItems.length} items expiring soon! ${mostUrgent.name} ${days === 0 ? 'TODAY' : days === 1 ? 'TOMORROW' : `in ${days} days`}`;
-                }
-
-                const payload = JSON.stringify({
-                    title,
-                    body,
-                    url: '/'
-                });
-
-                // Remove the push subscription fields to get clean PushSubscription object
+                // Send SEPARATE notification for EACH item
                 const { items: _, createdAt, updatedAt, ...pushSubscription } = userData;
 
-                await webpush.sendNotification(
-                    pushSubscription as webpush.PushSubscription,
-                    payload
-                );
+                for (const item of expiringItems) {
+                    try {
+                        const days = getDaysRemaining(item.expiryDate);
+                        let emoji = '';
+                        let body = '';
+
+                        if (days === 0) {
+                            emoji = '🚨';
+                            body = `${emoji} Expires TODAY!`;
+                        } else if (days === 1) {
+                            emoji = '⚠️';
+                            body = `${emoji} Expires TOMORROW`;
+                        } else if (days === 2) {
+                            emoji = '⚠️';
+                            body = `${emoji} Expires in 2 days`;
+                        } else {
+                            emoji = '⚠️';
+                            body = `${emoji} Expires in ${days} days`;
+                        }
+
+                        const payload = JSON.stringify({
+                            title: item.name, // Food name as title
+                            body: body,
+                            icon: '/icons/icon-192.png',
+                            badge: '/icons/icon-192.png',
+                            tag: `expiry-${item.id}`, // Unique tag per item
+                            url: '/'
+                        });
+
+                        await webpush.sendNotification(
+                            pushSubscription as webpush.PushSubscription,
+                            payload
+                        );
+
+                        console.log(`[Push] Sent notification for "${item.name}" (${days} days) to ${key}`);
+                    } catch (itemErr: any) {
+                        console.error(`[Push] Failed to send notification for item "${item.name}":`, itemErr.message);
+                        // Don't fail the whole loop if one item fails
+                    }
+                }
+
                 sent++;
-                console.log(`[Push] Sent to ${key}: ${expiringItems.length} items`);
+                console.log(`[Push] Sent ${expiringItems.length} notifications to ${key}`);
             } catch (err: any) {
                 console.error(`[Push] Failed to send to ${key}:`, err.message);
                 failed++;
